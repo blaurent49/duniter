@@ -3,6 +3,7 @@
 const co = require('co');
 const os = require('os');
 const Q = require('q');
+const dns = require('dns');
 const _ = require('underscore');
 const upnp = require('nnupnp');
 const http = require('http');
@@ -33,6 +34,14 @@ module.exports = {
   },
   getLANIPv4: () => getLAN('IPv4'),
   getLANIPv6: () => getLAN('IPv6'),
+  getReverseDNS: (ip) => new Promise((resolve, reject) => {
+    dns.reverse(ip, function(err, domains) {
+      if (err) {
+        return reject(err);
+      }
+      resolve(domains[0]);
+    });
+  }),
 
   listInterfaces: () => {
     const netInterfaces = os.networkInterfaces();
