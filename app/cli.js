@@ -105,6 +105,28 @@ module.exports = () => {
         .option('--memory', 'Memory mode')
       ;
 
+      for (const opt of options) {
+        program
+          .option(opt.optFormat, opt.optDesc, opt.optParser);
+      }
+
+      for (const cmd of commands) {
+        program
+          .command(cmd.command.name)
+          .description(cmd.command.desc)
+          .action(() => {
+            const args = Array.prototype.slice.call(arguments);
+            return co(function*() {
+              try {
+                const res = yield cmd.executionCallback.apply(null, [program].concat(args));
+                onResolve(res);
+              } catch (e) {
+                onReject(e);
+              }
+            });
+          });
+      }
+
       program
         .command('start')
         .description('Start Duniter node daemon.')
