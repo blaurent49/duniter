@@ -5,7 +5,6 @@ const logger = require('../app/lib/logger')('cli');
 const async = require('async');
 const Q = require('q');
 const _ = require('underscore');
-const Command = require('commander').Command;
 const contacter = require('../app/lib/contacter');
 const directory = require('../app/lib/system/directory');
 const wizard = require('../app/lib/wizard');
@@ -20,6 +19,8 @@ const constants = require('../app/lib/constants');
 
 module.exports = () => {
 
+  const commander = require('commander');
+  const Command = commander.Command;
   const ERASE_IF_ALREADY_RECORDED = true;
   const NO_LOGS = true;
 
