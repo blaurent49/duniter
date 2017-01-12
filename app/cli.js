@@ -18,6 +18,221 @@ const Block = require('../app/lib/entity/block');
 const constants = require('../app/lib/constants');
 
 module.exports = () => {
+
+  const commander = require('commander');
+  const Command = commander.Command;
+  const ERASE_IF_ALREADY_RECORDED = true;
+  const NO_LOGS = true;
+
+  const options = [];
+  const commands = [];
+
+  return {
+
+    addOption: (optFormat, optDesc, optParser) => options.push({ optFormat, optDesc, optParser }),
+
+    addCommand: (command, executionCallback) => commands.push({ command, executionCallback }),
+
+    // To execute the provided command
+    execute: (programArgs, onServiceCallback) => co(function*() {
+
+      const program = new Command();
+
+      let onResolve, onReject = () => Promise.reject(Error("Uninitilized rejection throw")), onService, closeCommand = () => Promise.resolve(true);
+      const currentCommand = new Promise((resolve, reject) => {
+        onResolve = resolve;
+        onReject = reject;
+      });
+
+      function subCommand(promiseFunc) {
+        return function() {
+          let args = Array.prototype.slice.call(arguments, 0);
+          return co(function*() {
+            try {
+              let result = yield promiseFunc.apply(null, args);
+              onResolve(result);
+            } catch (e) {
+              if (e && e.uerr) {
+                onReject(e.uerr.message);
+              } else {
+                onReject(e);
+              }
+            }
+          })
+        };
+      }
+
+      function connect(callback, useDefaultConf) {
+        return function () {
+          var cbArgs = arguments;
+          var dbName = program.mdb || "duniter_default";
+          var dbHome = program.home;
+
+          const home = directory.getHome(dbName, dbHome);
+          var server = duniter(home, program.memory === true, commandLineConf(program));
+
+          // If ever the process gets interrupted
+          let isSaving = false;
+          closeCommand = () => co(function*() {
+            if (!isSaving) {
+              isSaving = true;
+              // Save DB
+              return server.disconnect();
+            }
+          });
+
+          // Initialize server (db connection, ...)
+          return server.plugFileSystem(useDefaultConf)
+            .then(() => server.loadConf())
+            .then(function () {
+              try {
+                cbArgs.length--;
+                cbArgs[cbArgs.length++] = server;
+                cbArgs[cbArgs.length++] = server.conf;
+                return callback.apply(this, cbArgs);
+              } catch(e) {
+                server.disconnect();
+                throw e;
+              }
+            });
+        };
+      }
+
+      function service(callback, nologs) {
+
+        return function () {
+
+          if (nologs) {
+            // Disable logs
+            require('../app/lib/logger')().mute();
+          }
+
+          var cbArgs = arguments;
+          var dbName = program.mdb;
+          var dbHome = program.home;
+
+          // Add log files for this instance
+          logger.addHomeLogs(directory.getHome(dbName, dbHome));
+
+          const home = directory.getHome(dbName, dbHome);
+          var server = duniter(home, program.memory === true, commandLineConf(program));
+
+          // If ever the process gets interrupted
+          let isSaving = false;
+          closeCommand = () => co(function*() {
+            if (!isSaving) {
+              isSaving = true;
+              // Save DB
+              return server.disconnect();
+            }
+          });
+
+          const that = this;
+
+          // Initialize server (db connection, ...)
+          return co(function*() {
+            try {
+              yield server.initWithDAL();
+              yield configure(program, server, server.conf || {});
+              yield server.loadConf();
+              cbArgs.length--;
+              cbArgs[cbArgs.length++] = server;
+              cbArgs[cbArgs.length++] = server.conf;
+              cbArgs[cbArgs.length++] = program;
+              onService && onService(server);
+              return callback.apply(that, cbArgs);
+            } catch (e) {
+              server.disconnect();
+              throw e;
+            }
+          });
+        };
+      }
+
+      onService = onServiceCallback;
+      program.parse(programArgs);
+
+      if (programArgs.length <= 2) {
+        onReject('No command given.');
+      }
+
+      const res = yield currentCommand;
+      if (closeCommand) {
+        yield closeCommand();
+      }
+      return res;
+    })
+  };
+};
+
+/****************
+ *
+ *   UTILITIES
+ *
+ ****************/
+
+function generateAndSend(program, getGenerationMethod) {
+  return function (host, port, difficulty, server, conf) {
+    return new Promise((resolve, reject) => {
+      async.waterfall([
+        function (next) {
+          const method = getGenerationMethod(server);
+          co(function*(){
+            try {
+              const block = yield method();
+              next(null, block);
+            } catch(e) {
+              next(e);
+            }
+          });
+        },
+        function (block, next) {
+          if (program.check) {
+            block.time = block.medianTime;
+            program.show && console.log(block.getRawSigned());
+            co(function*(){
+              try {
+                yield server.doCheckBlock(block);
+                logger.info('Acceptable block');
+                next();
+              } catch (e) {
+                next(e);
+              }
+            });
+          }
+          else {
+            logger.debug('Block to be sent: %s', block.quickDescription());
+            var wiz = wizard(server);
+            async.waterfall([
+              function (next) {
+                if (!conf.salt && !conf.passwd)
+                  wiz.configKey(conf, next);
+                else
+                  next();
+              },
+              function (next) {
+                // Extract key pair
+                co(function*(){
+                  try {
+                    const pair = yield keyring.scryptKeyPair(conf.salt, conf.passwd);
+                    next(null, pair);
+                  } catch(e) {
+                    next(e);
+                  }
+                });
+              },
+              function (pair, next) {
+                proveAndSend(program, server, block, pair.publicKey, parseInt(difficulty), host, parseInt(port), next);
+              }
+            ], next);
+          }
+        }
+      ], (err, data) => {
+        err && reject(err);
+        !err && resolve(data);
+      });
+    });
+  };
 }
 
 function proveAndSend(program, server, block, issuer, difficulty, host, port, done) {
