@@ -52,7 +52,7 @@ function PeerCrawler() {
     clearInterval(crawlPeersInterval);
   });
 
-  const crawlPeers = (server, conf, dontCrawlIfEnoughPeers = false) => {
+  const crawlPeers = (server, conf, dontCrawlIfEnoughPeers) => {
     logger.info('Crawling the network...');
     return co(function *() {
       const peers = yield server.dal.listAllPeersWithStatusNewUPWithtout(conf.keyPair.pub);
