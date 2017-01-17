@@ -63,7 +63,7 @@ function PeerCrawler() {
       let tested = [];
       const found = [];
       while (peersToTest.length > 0) {
-        const results = yield peersToTest.map((p) => crawlPeer(server, p));
+        const results = [];
         tested = tested.concat(peersToTest.map((p) => p.pubkey));
         // End loop condition
         peersToTest.splice(0);
@@ -99,22 +99,4 @@ function PeerCrawler() {
       }
     });
   };
-
-  const crawlPeer = (server, aPeer) => co(function *() {
-    let subpeers = [];
-    try {
-      logger.debug('Crawling peers of %s %s', aPeer.pubkey.substr(0, 6), aPeer.getNamedURL());
-      const node = yield aPeer.connect();
-      //let remotePeer = yield Q.nbind(node.network.peering.get)();
-      const json = yield node.getPeers.bind(node)({ leaves: true });
-      for (let i = 0, len = json.leaves.length; i < len; i++) {
-        let leaf = json.leaves[i];
-        let subpeer = yield node.getPeers.bind(node)({ leaf: leaf });
-        subpeers.push(subpeer);
-      }
-      return subpeers;
-    } catch (e) {
-      return subpeers;
-    }
-  });
 }
