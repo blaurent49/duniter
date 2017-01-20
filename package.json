@@ -47,7 +47,6 @@
     "duniter-crawler": "^0.2.2",
     "duniter-keypair": "^0.2.0",
     "duniter-prover": "^0.2.1",
-    "duniter-ui": "^0.3.0",
     "event-stream": "3.3.4",
     "inquirer": "0.8.5",
     "jison": "0.4.17",
